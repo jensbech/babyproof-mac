@@ -1,5 +1,3 @@
-# Baby Mode
-
 A macOS menu bar app that locks the keyboard, trackpad and mouse so a baby can bash keys safely. Each key press shows a big colourful letter with confetti over the current screen.
 
 ## Build and run

@@ -12,7 +12,11 @@ final class ActivationWatcher {
 
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
-    private var tracker = ActivationTracker()
+    private var tracker = KeyBindings.defaults.activationMatcher()
+
+    func setMatcher(_ matcher: KeySequenceMatcher) {
+        tracker = matcher
+    }
 
     var isHealthy: Bool {
         guard let tap = tap else { return false }

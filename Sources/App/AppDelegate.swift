@@ -10,7 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var nsCursorHides = 0
     private var displayCursorHides = 0
     private let engine = EffectsEngine()
-    private var tracker = UnlockTracker()
+    private var bindings = KeyBindings.load()
+    private lazy var tracker = bindings.unlockMatcher()
+    private var settingsWindow: SettingsWindowController?
+    private var startItem: NSMenuItem?
+    private var recordingKeys: Bool { settingsWindow?.isRecording ?? false }
     private let power = PowerAssertion()
     private var permissionWindow: PermissionWindowController?
     private var pollTimer: Timer?
@@ -29,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         installStatusItem()
+        watcher.setMatcher(bindings.activationMatcher())
         watcher.onActivate = { [weak self] in self?.activateFromWatcher() }
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         if AXIsProcessTrustedWithOptions(options), startWatching() { return }
@@ -50,17 +55,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = NSImage(systemSymbolName: "face.smiling", accessibilityDescription: "Baby Mode")
         let menu = NSMenu()
-        let start = NSMenuItem(title: "Start Baby Mode (Enter, V, Enter)", action: #selector(startFromMenu), keyEquivalent: "")
+        let start = NSMenuItem(title: "", action: #selector(startFromMenu), keyEquivalent: "")
         start.target = self
         menu.addItem(start)
+        startItem = start
+        updateStartTitle()
+        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Baby Mode", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         item.menu = menu
         statusItem = item
     }
 
+    private func updateStartTitle() {
+        startItem?.title = "Start Baby Mode (\(KeyNames.describe(bindings.activation)))"
+    }
+
+    @objc private func openSettings() {
+        if settingsWindow == nil {
+            let controller = SettingsWindowController(bindings: bindings)
+            controller.onSave = { [weak self] in self?.apply($0) }
+            controller.onRecordingChanged = { [weak self] recording in
+                guard let self = self, !self.locked else { return }
+                if recording {
+                    self.stopWatching()
+                } else if self.permissionWindow == nil {
+                    self.resumeWatching()
+                }
+            }
+            settingsWindow = controller
+        }
+        settingsWindow?.show()
+    }
+
+    private func apply(_ newBindings: KeyBindings) {
+        bindings = newBindings
+        bindings.save()
+        watcher.setMatcher(bindings.activationMatcher())
+        tracker = bindings.unlockMatcher()
+        updateStartTitle()
+    }
+
     @objc private func startFromMenu() {
-        guard !locked else { return }
+        guard !locked, !recordingKeys else { return }
         stopWatching()
         if enterLock() { return }
         resumeWatching()
@@ -72,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func activateFromWatcher() {
-        guard !locked else { return }
+        guard !locked, !recordingKeys else { return }
         stopWatching()
         if !enterLock() { resumeWatching() }
     }
@@ -97,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkWatcher() {
+        if recordingKeys { return }
         if AXIsProcessTrusted() && watcher.isHealthy { return }
         stopWatching()
         resumeWatching()
@@ -104,7 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showPermissionWindow() {
         guard permissionWindow == nil else { return }
-        let controller = PermissionWindowController()
+        let controller = PermissionWindowController(startDescription: KeyNames.describe(bindings.activation))
         controller.onQuit = { NSApp.terminate(nil) }
         permissionWindow = controller
         controller.show(status: "Waiting for permission...")
@@ -115,7 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func pollPermission() {
-        guard !locked, AXIsProcessTrusted(), startWatching() else { return }
+        guard !locked, !recordingKeys, AXIsProcessTrusted(), startWatching() else { return }
         pollTimer?.invalidate()
         pollTimer = nil
         permissionWindow?.dismiss()
@@ -127,6 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let lock = EventTapLock()
         lock.onKey = { [weak self] input in self?.handle(input) }
         lock.onFatal = { [weak self] in DispatchQueue.main.async { self?.leaveLock() } }
+        settingsWindow?.close()
         guard lock.start() else { return false }
         tapLock = lock
         locked = true
@@ -175,14 +216,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handle(_ input: KeyInput) {
+        var unlockRequested = false
         switch input {
         case let .keyDown(code, isRepeat, character):
-            tracker.handle(.keyDown(code: code, isRepeat: isRepeat))
+            if tracker.handle(.keyDown(code: code, isRepeat: isRepeat)) { unlockRequested = true }
             if !isRepeat { engine.spawn(character) }
         case .keyUp:
             break
         case let .flagsChanged(flags):
-            tracker.handle(.modifiersChanged)
+            _ = tracker.handle(.modifiersChanged)
             let watched: UInt64 = CGEventFlags.maskShift.rawValue | CGEventFlags.maskControl.rawValue
                 | CGEventFlags.maskAlternate.rawValue | CGEventFlags.maskCommand.rawValue
                 | CGEventFlags.maskSecondaryFn.rawValue | CGEventFlags.maskAlphaShift.rawValue
@@ -190,7 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             lastFlags = flags
             if added != 0 { engine.spawn(nil) }
         }
-        if tracker.shouldUnlock { DispatchQueue.main.async { [weak self] in self?.leaveLock() } }
+        if unlockRequested { DispatchQueue.main.async { [weak self] in self?.leaveLock() } }
     }
 
     private func tick() {
@@ -207,7 +249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard locked else { return }
         teardownLock()
         NSApp.hide(nil)
-        resumeWatching()
+        if !recordingKeys { resumeWatching() }
     }
 
     private func teardownLock() {

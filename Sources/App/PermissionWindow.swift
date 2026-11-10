@@ -5,7 +5,7 @@ final class PermissionWindowController: NSObject, NSWindowDelegate {
     private let statusLabel: NSTextField
     var onQuit: (() -> Void)?
 
-    override init() {
+    init(startDescription: String) {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 260),
                           styleMask: [.titled, .closable],
                           backing: .buffered, defer: false)
@@ -19,7 +19,7 @@ final class PermissionWindowController: NSObject, NSWindowDelegate {
         let heading = NSTextField(labelWithString: "Baby Mode needs Accessibility permission")
         heading.font = NSFont.boldSystemFont(ofSize: 16)
 
-        let body = NSTextField(wrappingLabelWithString: "To lock the keyboard and trackpad, Baby Mode must be allowed in System Settings > Privacy & Security > Accessibility. Enable \"Baby Mode\" there. This window will close once permission is granted. Then press Enter, V, Enter to start Baby Mode.")
+        let body = NSTextField(wrappingLabelWithString: "To lock the keyboard and trackpad, Baby Mode must be allowed in System Settings > Privacy & Security > Accessibility. Enable \"Baby Mode\" there. This window will close once permission is granted. Then press \(startDescription) to start Baby Mode.")
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.stringValue = "Waiting for permission..."
 

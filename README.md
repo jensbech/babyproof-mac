@@ -1,36 +1,25 @@
 # Baby Mode
 
-Hand a baby the keyboard. Every key press shows a big colourful letter or digit with a confetti burst, drawn over whatever is already on screen. All keyboard and trackpad/mouse input is swallowed so nothing underneath can be touched.
+A macOS menu bar app that locks the keyboard, trackpad and mouse so a baby can bash keys safely. Each key press shows a big colourful letter with confetti over the current screen.
 
-## Build
+## Build and run
 
-    ./build.sh
-
-Produces `Baby Mode.app` in this folder (Swift + AppKit, no dependencies, no Xcode GUI needed) and ad-hoc signs it with identifier `no.bechsor.babymode`.
-
-Run the unlock-logic tests with `./test.sh`.
-
-## Launch and grant permission
-
+    ./build.sh            # builds the app and its icon, then ad-hoc signs "Baby Mode.app"
+    ./test.sh             # runs the key-sequence tests
     open "Baby Mode.app"
 
-Baby Mode runs in the background with a smiley icon in the menu bar, and does not lock on launch. It needs Accessibility permission to read keys and intercept input. On first launch a window explains how to enable it in System Settings > Privacy & Security > Accessibility.
+Requires macOS 12+ and Accessibility permission (System Settings > Privacy & Security > Accessibility). Rebuilding changes the ad-hoc signature, so you may need to remove and re-add the app there.
 
-To have it ready after a restart, add it under System Settings > General > Login Items.
+## Use
 
-macOS ties the Accessibility grant to the code signature. Ad-hoc signatures change with every rebuild, so after rebuilding you may need to remove "Baby Mode" from the Accessibility list (select it and press minus) and add or enable it again.
+- **Start:** press Return, V, Return, with less than 1.5 s between presses and no modifiers held. You can also start it from the menu bar icon.
+- **Stop:** press Return 5 times in a row. Any other key resets the count.
+- **Change keys:** open **Settings…** from the menu bar icon and record new sequences. A start sequence can be 2–8 keys and a stop sequence 3–12 keys. Modifier keys can't be used.
 
-## Start
-
-Press Enter, V, Enter, with no more than 1.5 seconds between presses and no modifier held, or use the menu bar icon. The first Enter and the V still reach the app you are in; the last Enter does not. Keys typed in password fields are hidden from Baby Mode, so the sequence does not work there.
-
-## Unlock
-
-Press Enter 5 times in a row to return to the background. Any other key, including a modifier, starts the count again. Holding Enter down counts as one press, and there is no time limit between presses.
+While locked, the cursor is hidden, the Dock and menu bar are hidden, app switching and Force Quit are disabled, and display sleep is prevented.
 
 ## Limits
 
-- The power button (and Touch ID button) cannot be blocked; a long press will still power off the Mac.
-- Closing the lid, unplugging power or battery running out behave as usual.
-- If the event tap dies and cannot be re-enabled, or Accessibility permission is revoked, the lock ends rather than leave a dead overlay.
-- Display sleep is prevented while running; the assertion is released on exit.
+- The power button, closing the lid and power loss still work as normal.
+- It won't start, and stops itself, while a password field has secure input enabled.
+- If Accessibility permission is revoked or the input tap fails, the lock ends.
